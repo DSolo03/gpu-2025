@@ -7,32 +7,19 @@
 
 __global__ void gelu_kernel(const float *input, float *output, int size)
 {
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < size)
     {
         float x = input[idx];
-        const float sqrt_2_over_pi = sqrtf(2.0f / M_PI);
+
+        const float sqrt_2_over_pi = 0.7978845608f;
         const float coeff = 0.044715f;
 
         float x_cubed = x * x * x;
         float inner = sqrt_2_over_pi * (x + coeff * x_cubed);
 
-        float tanh_val;
-
-        if (inner > 4.0f)
-        {
-            tanh_val = 1.0f;
-        }
-        else if (inner < -4.0f)
-        {
-            tanh_val = -1.0f;
-        }
-        else
-        {
-            float exp_val = expf(-2.0f * fabsf(inner));
-            tanh_val = copysignf(1.0f - exp_val, inner) / (1.0f + exp_val);
-        }
+        float tanh_val = tanhf(inner);
 
         output[idx] = 0.5f * x * (1.0f + tanh_val);
     }
@@ -56,16 +43,18 @@ std::vector<float> GeluCUDA(const std::vector<float> &input)
 
     gelu_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_input, d_output, size);
 
+    cudaDeviceSynchronize();
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
+    }
+
     cudaMemcpy(result.data(), d_output, size * sizeof(float), cudaMemcpyDeviceToHost);
 
     cudaFree(d_input);
     cudaFree(d_output);
-
-    cudaError_t error = cudaGetLastError();
-    if (error != cudaSuccess)
-    {
-        std::cerr << "CUDA error: " << cudaGetErrorString(error) << std::endl;
-    }
 
     return result;
 }
